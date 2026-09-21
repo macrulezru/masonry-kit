@@ -27,6 +27,11 @@ function resolveElement(item: MasonryItemDescriptor): HTMLElement | null {
   return item.el ?? null
 }
 
+function findIncompleteImages(el: HTMLElement): HTMLImageElement[] {
+  const images = el instanceof HTMLImageElement ? [el] : Array.from(el.querySelectorAll('img'))
+  return images.filter((img) => !img.complete)
+}
+
 export function createMasonryEngine(container: HTMLElement, options: MasonryOptions = {}): MasonryEngine {
   const direction = options.direction ?? 'vertical'
   const minLaneSize = options.minLaneSize ?? DEFAULT_MIN_LANE_SIZE
@@ -77,6 +82,7 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
   let lastLayout: MasonryItemLayout[] = []
   let lastVisibleIds: string[] = []
   const measuredMainSize = new Map<string, number>()
+  const trackedImages = new WeakSet<HTMLImageElement>()
   let warnedMissingEstimate = false
   let draggingId: string | null = null
 
@@ -241,10 +247,21 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
 
       let mainSize: number | undefined
       if (el) {
-        const measured = direction === 'vertical' ? el.getBoundingClientRect().height : el.getBoundingClientRect().width
-        if (measured > 0) {
-          mainSize = measured
-          measuredMainSize.set(id, measured)
+        const incompleteImages = findIncompleteImages(el)
+        if (incompleteImages.length === 0) {
+          const measured =
+            direction === 'vertical' ? el.getBoundingClientRect().height : el.getBoundingClientRect().width
+          if (measured > 0) {
+            mainSize = measured
+            measuredMainSize.set(id, measured)
+          }
+        } else {
+          for (const img of incompleteImages) {
+            if (trackedImages.has(img)) continue
+            trackedImages.add(img)
+            img.addEventListener('load', relayout, { once: true })
+            img.addEventListener('error', relayout, { once: true })
+          }
         }
       }
       if (mainSize === undefined) mainSize = measuredMainSize.get(id)

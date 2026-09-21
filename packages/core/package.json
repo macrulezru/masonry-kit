@@ -1,6 +1,6 @@
 {
   "name": "@macrulez/masonry-kit-core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Framework-agnostic masonry/bento grid layout engine (ResizeObserver + transform-based positioning)",
   "license": "MIT",
   "type": "module",

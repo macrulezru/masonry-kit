@@ -20,7 +20,7 @@ const masonryKitModule: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptio
     name: '@macrulez/masonry-kit-nuxt',
     configKey: 'masonry',
   },
-  
+
   setup(options, nuxt) {
     const resolver = createResolver(import.meta.url)
 

@@ -122,6 +122,26 @@ describe('MasonryGrid — item sync (mocked engine)', () => {
     unmount()
   })
 
+  it('auto-generates a stable id for an item with none, keyed by object identity', async () => {
+    const item = { colSpan: 2 }
+    let bump!: () => void
+
+    function Host() {
+      const [items, setItems] = useState([item])
+      bump = () => setItems([item])
+      return createElement(MasonryGrid, { items }, () => 'A')
+    }
+
+    const { unmount } = render(createElement(Host))
+    const firstId = lastSetItemsCall()[0]!.id
+    expect(firstId).toBeTruthy()
+
+    await act(async () => bump())
+    expect(lastSetItemsCall()[0]!.id).toBe(firstId)
+
+    unmount()
+  })
+
   it('forwards the engine layout event as its own onLayout call', () => {
     const onLayout = vi.fn()
     const { unmount } = render(createElement(MasonryGrid, { items: [{ id: 'a' }], onLayout }, () => 'A'))

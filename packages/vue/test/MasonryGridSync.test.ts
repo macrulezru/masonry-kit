@@ -119,6 +119,28 @@ describe('MasonryGrid — item sync (mocked engine)', () => {
     wrapper.unmount()
   })
 
+  it('auto-generates a stable id for an item with none, keyed by object identity', async () => {
+    const item = { colSpan: 2 }
+    const items = ref([item])
+
+    const Host = defineComponent({
+      setup() {
+        return () => h(MasonryGrid, { items: items.value }, { item: () => 'A' })
+      },
+    })
+
+    const wrapper = mount(Host, { attachTo: document.body })
+    await nextTick()
+    const firstId = lastSetItemsCall()[0]!.id
+    expect(firstId).toBeTruthy()
+
+    items.value = [item]
+    await nextTick()
+    expect(lastSetItemsCall()[0]!.id).toBe(firstId)
+
+    wrapper.unmount()
+  })
+
   it('forwards the engine layout event as its own layout emit', async () => {
     const wrapper = mount(MasonryGrid, {
       props: { items: [{ id: 'a' }] },
