@@ -8,20 +8,9 @@ export interface MasonryEngine {
   updateItem(id: string, patch: Partial<Omit<MasonryItemDescriptor, 'id'>>): void
   addItem(item: MasonryItemDescriptor, index?: number): void
   removeItem(id: string): void
-  /** Forces an immediate recomputation, bypassing the rAF batching (e.g. right after a manual content mutation). */
   relayout(): void
   getLayout(): MasonryItemLayout[]
-  /** Ids that should have a real DOM element right now — see `MasonryOptions.virtualize` (§3.5). Every packed item's id when `virtualize` is off. */
   getVisibleIds(): string[]
-  /**
-   * Excludes `id` from packing/positioning entirely (§5.4) — everyone else
-   * reflows immediately as if it weren't in the list, and its element's
-   * `transform`/`opacity`/classes are left 100% to the caller (a drag
-   * gesture following the pointer, say) until this is called again with
-   * `null`, which re-includes it on the next relayout: since its `transform`
-   * is whatever the caller last set (not empty), it FLIP-animates from there
-   * into its packed slot instead of popping in.
-   */
   setDragging(id: string | null): void
   on<E extends keyof MasonryEngineEventMap>(event: E, handler: (payload: MasonryEngineEventMap[E]) => void): () => void
   destroy(): void
@@ -59,21 +48,12 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
   const transitionValue = `transform ${transitionDuration}ms ${transitionEasing}, opacity ${transitionDuration}ms ${transitionEasing}`
 
   container.style.position = 'relative'
-  // Consumer convenience (§7) — lets custom CSS reference the same timing
-  // (e.g. a hover effect) without hardcoding it separately. Core's own
-  // animation logic below uses the resolved JS values directly, not these.
+
   if (animate) {
     container.style.setProperty('--mk-transition-duration', `${transitionDuration}ms`)
     container.style.setProperty('--mk-transition-easing', transitionEasing)
   }
-  // `horizontal`'s container is a fixed-size scroll viewport (its own height
-  // is the consumer's to set — §3.1/§7), not a box the engine grows to fit
-  // the content like `vertical`'s. A 1px spacer, positioned at the packed
-  // content's far edge via the same `transform: translate()` every item
-  // already uses, gives the container a real `scrollWidth` to scroll through
-  // without touching its own layout width — setting `container.style.width`
-  // instead would make the container itself grow to fit all content, leaving
-  // nothing to scroll and blowing out whatever it's embedded in.
+
   let horizontalSpacer: HTMLElement | null = null
   if (direction === 'horizontal') {
     container.style.overflowX = 'auto'
@@ -88,16 +68,14 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     horizontalSpacer.style.visibility = 'hidden'
     horizontalSpacer.style.pointerEvents = 'none'
     container.appendChild(horizontalSpacer)
+  } else {
+    container.style.overflowX = 'clip'
   }
 
   const items = new Map<string, MasonryItemDescriptor>()
   let order: string[] = []
   let lastLayout: MasonryItemLayout[] = []
   let lastVisibleIds: string[] = []
-  // Persists a real measurement across relayouts even once an item scrolls
-  // back out of view and its element unmounts (§3.5) — without this, a
-  // virtualized item would keep reverting to its raw estimate every time it
-  // leaves the measured window, instead of staying self-corrected.
   const measuredMainSize = new Map<string, number>()
   let warnedMissingEstimate = false
   let draggingId: string | null = null
@@ -128,7 +106,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
       .map((entry) => entry.id)
   }
 
-  /** Re-syncs which elements are observed for resize — only needed when the item set/its elements change, not on every resize-triggered relayout (that would tear down and rebuild every observer on each frame). */
   function syncObservedElements() {
     watcher.unobserveAll()
     watcher.observe(container)
@@ -138,21 +115,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     }
   }
 
-  /**
-   * Best-effort fade-out for an item leaving the item set (§5.2), applied
-   * directly to whatever element it currently resolves to — core doesn't own
-   * that element's DOM lifecycle (a framework adapter does), so this can't
-   * delay the element's actual removal by itself. `<MasonryGrid>` keeps the
-   * element mounted for `transitionDuration` after removal specifically so
-   * this gets to play out instead of being cut short — see TECH_SPEC
-   * §5.2/§6.2 for why that delay has to live in the adapter.
-   *
-   * Opacity only, deliberately — an accompanying `scale()` was tried and
-   * dropped (see §5.2's note on this) since it changes the element's
-   * *painted* box size while position/gap math never accounts for that,
-   * which reads as the layout itself getting the gap wrong even though the
-   * underlying positions never moved.
-   */
   function applyLeaveStyling(id: string) {
     if (!animate) return
     const item = items.get(id)
@@ -163,7 +125,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     el.style.opacity = '0'
   }
 
-  /** Drops `will-change`/`.mk-item-moving` once the transition triggered by `applyPosition` actually finishes — not indefinitely, since holding a compositing layer open forever is the classic `will-change` gotcha (§7). */
   function clearAnimationState(el: HTMLElement) {
     const onTransitionEnd = (event: TransitionEvent) => {
       if (event.target !== el) return
@@ -175,25 +136,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     el.addEventListener('transitionend', onTransitionEnd)
   }
 
-  /**
-   * Applies an item's resolved position — instantly on its very first
-   * placement (else it would visibly slide in from the origin instead of
-   * just fading into its real spot), FLIP-animated on every placement after
-   * that (§5.2). A no-op transform (position genuinely unchanged since last
-   * time) is skipped entirely, so a static item's `transitionend`
-   * listener/`will-change` churn stays at zero. Returns `true` for a first
-   * placement under `animate` — the caller batches *every* such item's
-   * "commit the instant state, then enable the transition" step into one
-   * shared forced reflow instead of one per item (see `relayout`'s pass 3).
-   *
-   * "First placement" is read off the *element itself* (`transform` still
-   * unset — pass 1 never touches it) rather than a per-id flag: under
-   * `virtualize`, the same id gets a brand-new DOM element each time it
-   * re-enters the visible range (the old one was unmounted while it was out
-   * of view), and a per-id flag would wrongly treat that fresh element as
-   * "already positioned", animating it in from the origin exactly like the
-   * bug this function exists to avoid.
-   */
   function applyPosition(el: HTMLElement, x: number, y: number): boolean {
     const transform = `translate(${x}px, ${y}px)`
     const isFirstPosition = el.style.transform === ''
@@ -220,22 +162,13 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     return false
   }
 
-  /** The visible window along the main axis, in container-relative coordinates (± `overscan`) — see `MasonryOptions.scrollContainer`. */
   function resolveVisibleRange(): [number, number] {
-    // 'self': items are positioned via `transform` in the container's own
-    // unscrolled coordinate space, so its `getBoundingClientRect()` never
-    // moves as it scrolls itself — `scrollTop`/`scrollLeft` is the only thing
-    // that actually tells us how far into that content the viewport sits.
     if (scrollContainerOption === 'self') {
       const scrollOffset = direction === 'vertical' ? container.scrollTop : container.scrollLeft
       const viewportSize = direction === 'vertical' ? container.clientHeight : container.clientWidth
       return [scrollOffset - overscan, scrollOffset + viewportSize + overscan]
     }
 
-    // 'window' and an explicit ancestor element both scroll *around*
-    // `container` rather than being `container` itself, so their own
-    // `getBoundingClientRect()` already reflects all of that scrolling —
-    // container-relative position is just the gap between the two rects.
     const containerRect = container.getBoundingClientRect()
     const containerMainStart = direction === 'vertical' ? containerRect.top : containerRect.left
 
@@ -253,17 +186,12 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     return [viewportStart - containerMainStart - overscan, viewportStart + viewportSize - containerMainStart + overscan]
   }
 
-  /** Estimated main-axis size for an item with no real measurement (yet) — §3.5's `estimatedSize → aspectRatio → estimateSize()` chain, only consulted at all when `virtualize` is on (aspectRatio alone still applies either way — see §4.3). */
   function resolveEstimatedMainSize(item: MasonryItemDescriptor, crossSize: number): number | undefined {
     if (virtualizeEnabled && item.estimatedSize !== undefined) return item.estimatedSize
     if (item.aspectRatio) return direction === 'vertical' ? crossSize / item.aspectRatio : crossSize * item.aspectRatio
     if (!virtualizeEnabled) return undefined
     if (estimateSizeFn) return estimateSizeFn(item)
 
-    // Last resort (§9): average of whatever's actually been measured so far,
-    // else this item's own cross size (a "roughly square" guess) — plus a
-    // one-time warning, since silently guessing on a virtualized list is
-    // easy to miss until the layout visibly looks wrong.
     if (!warnedMissingEstimate) {
       warnedMissingEstimate = true
       console.warn(
@@ -285,12 +213,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     const spans = new Map<string, number>()
     const crossSizes = new Map<string, number>()
 
-    // Pass 1 (writes): fix every mounted item's cross-axis size before reading
-    // anything back, so the natural main-axis size read in pass 2 reflects the
-    // size it will actually be packed at, instead of thrashing layout item by
-    // item. Items with no resolvable element yet (always true for anything
-    // outside the visible range under `virtualize`) simply have nothing to
-    // write here — they're still included below, just via an estimate.
     for (const id of ids) {
       const item = items.get(id)!
       const rawSpan = direction === 'vertical' ? (item.colSpan ?? 1) : (item.rowSpan ?? 1)
@@ -310,11 +232,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
       else el.style.height = `${crossSize}px`
     }
 
-    // Pass 2 (reads + size resolution): a mounted item gets measured for
-    // real; an unmounted one falls back to its last known real measurement,
-    // then an estimate (§3.5). An item with none of the above sits out of
-    // this pass entirely — see tech spec §4.3. It settles in on its own once
-    // it has SOME size to go on.
     const mainSizes = new Map<string, number>()
     const packInputs: PackInput[] = []
     for (const id of ids) {
@@ -340,8 +257,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
 
     const { items: packed, totalMainSize } = packLanes(packInputs, lanes, gapMain, placement)
 
-    // Pass 3 (writes): position mounted items; every packed item (mounted or
-    // not) still gets a `layout`/visible-id entry.
     const visibleRange = virtualizeEnabled ? resolveVisibleRange() : null
     const layout: MasonryItemLayout[] = []
     const visibleIds: string[] = []
@@ -369,10 +284,6 @@ export function createMasonryEngine(container: HTMLElement, options: MasonryOpti
     if (direction === 'vertical') container.style.height = `${totalMainSize}px`
     else if (horizontalSpacer) horizontalSpacer.style.transform = `translate(${totalMainSize}px, 0)`
 
-    // One shared forced reflow commits every entering item's instant
-    // (untransitioned) state at once, instead of one reflow per item —
-    // mounting dozens of items in the same pass would otherwise thrash
-    // layout by forcing it once per element (§4).
     if (entering.length > 0) {
       void entering[0]!.offsetHeight
       for (const el of entering) {

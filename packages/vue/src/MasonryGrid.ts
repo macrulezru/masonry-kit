@@ -23,19 +23,15 @@ import { masonryDefaults } from './config'
 
 export interface MasonryGridItem {
   id: string
-  /** Overrides the instance-wide default at `direction: 'vertical'`. default 1 */
   colSpan?: number
-  /** Overrides the instance-wide default at `direction: 'horizontal'`. default 1 */
   rowSpan?: number
   aspectRatio?: number
-  /** Only consulted while `options.virtualize` is on — see `MasonryItemDescriptor.estimatedSize`. */
   estimatedSize?: number
   order?: number
 }
 
 let instanceCounter = 0
 
-// "sr-only" pattern — visible to screen readers, hidden visually.
 const visuallyHidden = {
   position: 'absolute',
   width: '1px',
@@ -48,30 +44,6 @@ const visuallyHidden = {
   border: '0',
 } as const
 
-/**
- * Renders one measured wrapper `<div>` per item around that item's `#item`
- * slot — item content stays entirely the caller's, this only measures and
- * positions the wrapper. With `options.virtualize` on, only the currently
- * visible items (± overscan) actually get a wrapper/slot at all.
- *
- * With `options.animate` on (the default), an item removed from `items`
- * keeps its wrapper mounted for `transitionDuration` so core's leave
- * fade-out (§5.2) gets to play instead of being cut short.
- *
- * With `sortable` on (§5.4), every wrapper becomes keyboard-reorderable
- * (space/enter to pick up, arrow keys to move, space/enter to drop, escape
- * to cancel), announced through a live region. Reordering never mutates
- * `items` — it emits `reorder` with the new array; bind it back yourself
- * (`@reorder="items = $event"`).
- *
- * ```vue
- * <MasonryGrid :items="items" :options="{ columns: 'auto', minLaneSize: 240 }">
- *   <template #item="{ item }">
- *     <MyCard :data="item" />
- *   </template>
- * </MasonryGrid>
- * ```
- */
 export const MasonryGrid = defineComponent({
   name: 'MasonryGrid',
   props: {
@@ -91,18 +63,8 @@ export const MasonryGrid = defineComponent({
     let stopWatchOptions: (() => void) | null = null
     let syncScheduled = false
 
-    // `null` renders every item. With `virtualize` on, starts as an empty
-    // Set until the engine's first estimate-only relayout reports which ids
-    // are visible.
     const visibleIds = shallowRef<Set<string> | null>(props.options.virtualize ? new Set() : null)
-
-    // Flips to `true` synchronously inside the `layout` handler below, so
-    // Vue's next reactive flush swaps the SSR CSS-columns fallback (§4.4)
-    // for the real layout before the browser paints.
     const hasLaidOut = ref(false)
-
-    // Items that just disappeared from `props.items` but are still fading
-    // out — see `renderedItems` below.
     const leaving = shallowRef<Map<string, MasonryGridItem>>(new Map())
     const itemCache = new Map<string, MasonryGridItem>()
     let previousIds = new Set<string>()
@@ -135,7 +97,6 @@ export const MasonryGrid = defineComponent({
       return { main: gap?.main ?? 16, cross: gap?.cross ?? 16 }
     }
 
-    /** Column count for the SSR-fallback CSS `columns` approximation (§4.4). */
     function resolvedSsrColumns(): number {
       const horizontal = (props.options.direction ?? masonryDefaults.direction) === 'horizontal'
       const laneSpec = horizontal
@@ -144,7 +105,6 @@ export const MasonryGrid = defineComponent({
       return resolveSsrColumns(laneSpec, props.options.ssrColumns ?? masonryDefaults.ssrColumns)
     }
 
-    /** Starts a fade-out "ghost" for anything that disappeared from `nextItems` and has a mounted element to animate. */
     function trackLeavingItems(nextItems: MasonryGridItem[]) {
       const nextIds = new Set(nextItems.map((item) => item.id))
       for (const item of nextItems) itemCache.set(item.id, item)
@@ -185,8 +145,6 @@ export const MasonryGrid = defineComponent({
       engine.setItems(descriptors)
     }
 
-    // Batches ref-callback-triggered mount/unmount from the same Vue patch
-    // into one `setItems()` call.
     function scheduleSyncItems() {
       if (syncScheduled) return
       syncScheduled = true
@@ -196,9 +154,6 @@ export const MasonryGrid = defineComponent({
       })
     }
 
-    // Vue calls a function `ref` on every patch of its element
-    // unconditionally, regardless of identity — the `el === itemEls.get(id)`
-    // check below is what actually gates re-syncing on a real change.
     function getItemRefCallback(id: string): VNodeRef {
       let callback = itemRefCallbacks.get(id)
       if (callback) return callback
@@ -216,9 +171,6 @@ export const MasonryGrid = defineComponent({
       return callback
     }
 
-    // Core has no `updateOptions`, so a changed `options` *content* tears
-    // down and recreates the engine. Compared by content (`optionsEqual`),
-    // not by reference — see its own doc comment in core.
     function createEngine() {
       if (!container.value) return
       visibleIds.value = props.options.virtualize ? new Set() : null
@@ -240,8 +192,6 @@ export const MasonryGrid = defineComponent({
       syncItemsNow()
     }
 
-    // Sortable (§5.4): keyboard reordering, opt-in via `sortable`. Never
-    // mutates `props.items` — just emits `reorder` with the new array.
     const activeDragId = ref<string | null>(null)
     const liveMessage = ref('')
     const instructionsId = `${instanceId}-instructions`
@@ -258,7 +208,6 @@ export const MasonryGrid = defineComponent({
 
     let keyboardDragSnapshot: MasonryGridItem[] | null = null
 
-    /** Adjacent-index swap for keyboard reordering (§5.4). */
     function moveItem(items: MasonryGridItem[], id: string, toIndex: number): MasonryGridItem[] {
       const fromIndex = items.findIndex((item) => item.id === id)
       if (fromIndex === -1) return items
@@ -353,10 +302,6 @@ export const MasonryGrid = defineComponent({
         {
           ref: container,
           class: 'mk-grid',
-          // `{}`, not `undefined` — Vue's `patchStyle` treats a style binding
-          // going from an object to `undefined` as "remove the whole style
-          // attribute", wiping out position/height/transform core sets
-          // imperatively (§5.2). `{}` only clears the keys Vue itself set.
           style: hasLaidOut.value ? {} : { columns: resolvedSsrColumns(), columnGap: `${resolvedGap().cross}px` },
         },
         [

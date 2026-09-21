@@ -11,11 +11,6 @@ export interface UseMasonryReturn {
   engine: ReturnType<typeof shallowRef<MasonryEngine | null>>
 }
 
-/**
- * Low-level escape hatch for when `<MasonryGrid>`'s slot-per-item layout
- * doesn't fit — you own the item elements, this only wires the engine to a
- * container and keeps it in sync with reactive items.
- */
 export function useMasonry(
   container: MaybeRefOrGetter<HTMLElement | null | undefined>,
   options: UseMasonryOptions = {},
@@ -27,19 +22,12 @@ export function useMasonry(
     const el = toValue(container)
     if (!el || typeof window === 'undefined') return
 
-    // masonryDefaults first, then options on top — see config.ts and
-    // MasonryGrid.ts for why the merge order matters.
     const createdEngine = createMasonryEngine(el, {
       ...masonryDefaults,
       ...options,
     })
     engine.value = createdEngine
 
-    // watchEffect (not a plain watch on options.items) so that an item's el
-    // ref — read via toValue() inside resolveItemsForCore during this very
-    // callback — is itself tracked as a dependency. That lets a ref that
-    // starts out null resolve correctly once its element mounts, even though
-    // the surrounding `items` array itself never changes identity in that case.
     if (options.items) {
       stopSyncItems = watchEffect(() => {
         createdEngine.setItems(resolveItemsForCore(toValue(options.items) ?? []))
