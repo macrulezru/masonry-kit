@@ -29,6 +29,7 @@ export interface MasonryGridItem {
   aspectRatio?: number
   estimatedSize?: number
   order?: number
+  [key: string]: unknown
 }
 
 let instanceCounter = 0

@@ -28,6 +28,7 @@ export interface MasonryGridItem {
   aspectRatio?: number
   estimatedSize?: number
   order?: number
+  [key: string]: unknown
 }
 
 export interface MasonryGridProps {
