@@ -22,12 +22,9 @@ import {
 
 export interface MasonryGridItem {
   id: string
-  /** Overrides the instance-wide default at `direction: 'vertical'`. default 1 */
   colSpan?: number
-  /** Overrides the instance-wide default at `direction: 'horizontal'`. default 1 */
   rowSpan?: number
   aspectRatio?: number
-  /** Only consulted while `options.virtualize` is on — see `MasonryItemDescriptor.estimatedSize`. */
   estimatedSize?: number
   order?: number
 }
@@ -35,27 +32,14 @@ export interface MasonryGridItem {
 export interface MasonryGridProps {
   items: MasonryGridItem[]
   options?: MasonryOptions
-  /** Turns every wrapper into a keyboard-reorderable item (§5.4). default false */
   sortable?: boolean
   onLayout?: (items: MasonryItemLayout[]) => void
-  /** Fired instead of mutating `items` — same idea as Vue's `@reorder`, bind it back to your own state yourself. */
   onReorder?: (items: MasonryGridItem[]) => void
-  /** Called once per item — the React equivalent of the Vue adapter's `#item` slot. */
   children: (item: MasonryGridItem) => ReactNode
 }
 
-// SSR-safe: `useLayoutEffect` warns when it runs on the server, so this
-// falls back to `useEffect` there. The layout variant runs synchronously
-// after DOM mutations but before paint — needed so the SSR CSS-`columns`
-// fallback (§4.4) switches to the real layout in one frame, not a flash.
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
-/**
- * Returns an `options` reference that only changes when its *content* does.
- * `options` gets a fresh identity on every render unless the caller
- * memoizes it, and every effect below keys off it — see `optionsEqual`'s
- * own doc comment in core.
- */
 function useStableOptions(options: MasonryOptions): MasonryOptions {
   const ref = useRef(options)
   if (!optionsEqual(ref.current, options)) ref.current = options
@@ -87,21 +71,18 @@ function resolvedTransitionDuration(options: MasonryOptions): number {
   return options.transitionDuration ?? 250
 }
 
-/** Mirrors core's own gap resolution — a `number` applies to both axes. Needed here too since the SSR-fallback CSS-`columns` styling (§4.4) is rendered before the engine exists to resolve it for us. */
 function resolvedGap(options: MasonryOptions): { main: number; cross: number } {
   const gap = options.gap
   if (typeof gap === 'number') return { main: gap, cross: gap }
   return { main: gap?.main ?? 16, cross: gap?.cross ?? 16 }
 }
 
-/** Column count for the SSR-fallback CSS `columns` approximation (§4.4) — `columns`/`rows` (whichever `direction` uses) doubles as the lane spec input. */
 function resolvedSsrColumns(options: MasonryOptions): number {
   const horizontal = options.direction === 'horizontal'
   const laneSpec = horizontal ? options.rows : options.columns
   return resolveSsrColumns(laneSpec, options.ssrColumns)
 }
 
-/** Adjacent-index swap for keyboard reordering (§5.4) — `toIndex` is already a valid, in-bounds index into the *same* array, so a plain splice-out/splice-in is correct as-is. */
 function moveItem(items: MasonryGridItem[], id: string, toIndex: number): MasonryGridItem[] {
   const fromIndex = items.findIndex((item) => item.id === id)
   if (fromIndex === -1) return items
@@ -116,32 +97,6 @@ function labelFor(id: string, items: MasonryGridItem[]): string {
   return `item ${position} of ${items.length}`
 }
 
-/**
- * Renders one measured wrapper `<div>` per item around whatever `children`
- * returns for it — item content stays entirely the caller's, this only
- * measures and positions the wrapper. With `options.virtualize` on, only the
- * currently visible items (± overscan) actually get a wrapper/render call at
- * all — the rest exist only as an estimate inside the engine (§3.5), not in
- * the DOM.
- *
- * With `options.animate` on (the default), an item removed from `items`
- * keeps its wrapper mounted for `transitionDuration` after it disappears
- * from the prop, so core's leave fade-out (§5.2) — applied directly to the
- * element the instant it notices the removal — actually gets to play instead
- * of being cut short by an immediate unmount.
- *
- * With `sortable` on (§5.4), every wrapper becomes keyboard-reorderable
- * (space/enter to pick up, arrow keys to move, space/enter to drop, escape
- * to cancel), announced through a live region. Reordering never mutates
- * `items` — it calls `onReorder` with the new array, same idea as Vue's
- * `@reorder`; store it back yourself.
- *
- * ```tsx
- * <MasonryGrid items={items} options={{ columns: 'auto', minLaneSize: 240 }}>
- *   {(item) => <MyCard data={item} />}
- * </MasonryGrid>
- * ```
- */
 export function MasonryGrid(props: MasonryGridProps) {
   const { items, options: optionsProp = {}, sortable = false, onLayout, onReorder, children } = props
   const options = useStableOptions(optionsProp)
@@ -171,9 +126,6 @@ export function MasonryGrid(props: MasonryGridProps) {
   const onLayoutRef = useRef(onLayout)
   onLayoutRef.current = onLayout
 
-  // `null` renders every item. With `virtualize` on, starts as an empty Set
-  // until the engine's first estimate-only relayout reports which ids are
-  // visible.
   const renderedItems = useMemo(() => {
     const base = visibleIds === null ? items : items.filter((item) => visibleIds.has(item.id))
     if (leaving.size === 0) return base
@@ -197,13 +149,6 @@ export function MasonryGrid(props: MasonryGridProps) {
     engine.setItems(descriptors)
   }
 
-  // Diffs `items` against the last-seen id set and starts a fade-out
-  // "ghost" for anything that disappeared and had a mounted element.
-  // Deliberately run *during render* (React's "adjust state while
-  // rendering" pattern), not in an effect: an effect runs after commit,
-  // which would be one commit too late to catch the wrapper before it
-  // unmounts. The removal timer itself is a real side effect and lives in
-  // a separate effect below.
   const lastDiffedItems = useRef<MasonryGridItem[] | null>(null)
   if (lastDiffedItems.current !== items) {
     lastDiffedItems.current = items
@@ -224,8 +169,6 @@ export function MasonryGrid(props: MasonryGridProps) {
     previousIds.current = nextIds
   }
 
-  // `scheduledLeaveIds` tracks which `leaving` entries already have a
-  // pending timer so a re-render doesn't schedule a duplicate one.
   const scheduledLeaveIds = useRef(new Set<string>())
   useEffect(() => {
     for (const id of leaving.keys()) {
@@ -246,10 +189,6 @@ export function MasonryGrid(props: MasonryGridProps) {
     }
   }, [leaving])
 
-  // Core has no `updateOptions`, so a changed `options` *content* tears
-  // down and recreates the engine. `options` here is already
-  // `useStableOptions(optionsProp)` — content-compared, not just
-  // reference-compared.
   useIsomorphicLayoutEffect(() => {
     if (!containerNode) return
     setVisibleIds((prev) => {
@@ -278,17 +217,10 @@ export function MasonryGrid(props: MasonryGridProps) {
     }
   }, [containerNode, options])
 
-  // The only place that calls `syncItemsNow()` — deps duplicate the engine
-  // creation effect's own deps so a fresh engine always gets synced too.
   useIsomorphicLayoutEffect(() => {
     syncItemsNow()
   }, [containerNode, options, renderedItems])
 
-  // ---------------------------------------------------------------------
-  // Sortable (§5.4): keyboard reordering, opt-in via `sortable`. Never
-  // mutates `items` — just calls `onReorder` with the new array, letting
-  // the caller's own state stay the single source of truth.
-  // ---------------------------------------------------------------------
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [liveMessage, setLiveMessage] = useState('')
   const keyboardDragSnapshotRef = useRef<MasonryGridItem[] | null>(null)

@@ -1,4 +1,3 @@
-/** Batches ResizeObserver callbacks for any number of observed elements into one rAF-scheduled notification. */
 export function createResizeWatcher(onChange: () => void) {
   const observed = new Set<HTMLElement>()
   let scheduled = false

@@ -1,33 +1,21 @@
 export interface PackInput {
   id: string
-  /** Number of adjacent lanes this item occupies — clamped to `[1, lanes]` internally, so callers don't need to pre-clamp. */
   span: number
-  /** Size along the main (unbounded, growing) axis — a real measurement or a provisional estimate. */
   mainSize: number
 }
 
 export interface PackedItem {
   id: string
-  /** Index of the first lane this item occupies. */
   laneIndex: number
   span: number
-  /** Position along the main axis. */
   mainPos: number
 }
 
 export interface PackResult {
   items: PackedItem[]
-  /** Size the container needs along the main axis to fit every packed item, with no trailing gap past the last one. */
   totalMainSize: number
 }
 
-/**
- * Skyline-packing generalized to spans (tech spec §3.2/§3.3): for span 1 this
- * is the classic "shortest lane wins" algorithm; a wider span is the same
- * search over every valid starting lane, minimizing the tallest edge among
- * the lanes it would cover, and then raises all of them to the new edge.
- * `'ordered'` skips the search and assigns lanes by strict round-robin instead.
- */
 export function packLanes(
   items: readonly PackInput[],
   lanes: number,

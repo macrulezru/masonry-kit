@@ -9,7 +9,4 @@ export type { MasonryDefaults } from './config'
 
 export type { RefFriendlyMasonryItem } from './refItems'
 
-// Every @macrulez/masonry-kit-core export is re-exported here too, so
-// installing just @macrulez/masonry-kit-vue reaches the framework-agnostic
-// layer directly, without a separate dependency on @macrulez/masonry-kit-core.
 export * from '@macrulez/masonry-kit-core'
