@@ -1,6 +1,6 @@
 {
   "name": "@macrulez/masonry-kit-nuxt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Nuxt module wrapping @macrulez/masonry-kit-vue: auto-imported <MasonryGrid> and useMasonry, module options for default layout behavior",
   "license": "MIT",
   "type": "module",

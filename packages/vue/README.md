@@ -165,7 +165,7 @@ setMasonryDefaults({ gap: 12, animate: true, transitionDuration: 200 })
 
 ## Documentation & links
 
-- 📖 **Full documentation:** [npm.vuecraft.ru/en/packages/masonry-kit](https://npm.vuecraft.ru/en/packages/masonry-kit/guide/vue-component.html)
+- 📖 **Full documentation:** [npm.vuecraft.ru/en/packages/masonry-kit](https://npm.vuecraft.ru/en/packages/masonry-kit/guide/component.html)
 - 🌐 **VueCraft:** [vuecraft.ru/en](https://vuecraft.ru/en)
 - 👤 **Author:** [macrulez.ru/en](https://macrulez.ru/en)
 - 💻 **GitHub:** [macrulezru/masonry-kit/packages/vue](https://github.com/macrulezru/masonry-kit/tree/master/packages/vue)

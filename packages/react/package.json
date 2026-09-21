@@ -1,6 +1,6 @@
 {
   "name": "@macrulez/masonry-kit-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React <MasonryGrid> component and useMasonry hook for masonry/bento grid layouts",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@macrulez/masonry-kit-vue",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Vue 3 <MasonryGrid> component and useMasonry composable for masonry/bento grid layouts",
   "license": "MIT",
   "type": "module",

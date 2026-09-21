@@ -148,7 +148,7 @@ This is exactly what `@macrulez/masonry-kit-vue`/`-react`'s `sortable` keyboard 
 
 ## Documentation & links
 
-- 📖 **Full documentation:** [npm.vuecraft.ru/en/packages/masonry-kit](https://npm.vuecraft.ru/en/packages/masonry-kit/guide/overview.html)
+- 📖 **Full documentation:** [npm.vuecraft.ru/en/packages/masonry-kit](https://npm.vuecraft.ru/en/packages/masonry-kit/guide/engine-api.html)
 - 🌐 **VueCraft:** [vuecraft.ru/en](https://vuecraft.ru/en)
 - 👤 **Author:** [macrulez.ru/en](https://macrulez.ru/en)
 - 💻 **GitHub:** [macrulezru/masonry-kit/packages/core](https://github.com/macrulezru/masonry-kit/tree/master/packages/core)
