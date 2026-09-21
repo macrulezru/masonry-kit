@@ -20,9 +20,10 @@ import {
   type MasonryOptions,
 } from '@macrulez/masonry-kit-core'
 import { masonryDefaults } from './config'
+import { getItemId } from './itemId'
 
 export interface MasonryGridItem {
-  id: string
+  id?: string
   colSpan?: number
   rowSpan?: number
   aspectRatio?: number
@@ -71,10 +72,10 @@ export const MasonryGrid = defineComponent({
 
     const renderedItems = computed(() => {
       const base =
-        visibleIds.value === null ? props.items : props.items.filter((item) => visibleIds.value!.has(item.id))
+        visibleIds.value === null ? props.items : props.items.filter((item) => visibleIds.value!.has(getItemId(item)))
       if (leaving.value.size === 0) return base
-      const baseIds = new Set(base.map((item) => item.id))
-      const ghosts = [...leaving.value.values()].filter((item) => !baseIds.has(item.id))
+      const baseIds = new Set(base.map((item) => getItemId(item)))
+      const ghosts = [...leaving.value.values()].filter((item) => !baseIds.has(getItemId(item)))
       return ghosts.length === 0 ? base : [...base, ...ghosts]
     })
 
@@ -106,8 +107,8 @@ export const MasonryGrid = defineComponent({
     }
 
     function trackLeavingItems(nextItems: MasonryGridItem[]) {
-      const nextIds = new Set(nextItems.map((item) => item.id))
-      for (const item of nextItems) itemCache.set(item.id, item)
+      const nextIds = new Set(nextItems.map((item) => getItemId(item)))
+      for (const item of nextItems) itemCache.set(getItemId(item), item)
 
       let additions: Map<string, MasonryGridItem> | null = null
       for (const id of previousIds) {
@@ -133,15 +134,18 @@ export const MasonryGrid = defineComponent({
 
     function syncItemsNow() {
       if (!engine) return
-      const descriptors: MasonryItemDescriptor[] = props.items.map((item) => ({
-        id: item.id,
-        el: itemEls.get(item.id),
-        colSpan: item.colSpan,
-        rowSpan: item.rowSpan,
-        aspectRatio: item.aspectRatio,
-        estimatedSize: item.estimatedSize,
-        order: item.order,
-      }))
+      const descriptors: MasonryItemDescriptor[] = props.items.map((item) => {
+        const id = getItemId(item)
+        return {
+          id,
+          el: itemEls.get(id),
+          colSpan: item.colSpan,
+          rowSpan: item.rowSpan,
+          aspectRatio: item.aspectRatio,
+          estimatedSize: item.estimatedSize,
+          order: item.order,
+        }
+      })
       engine.setItems(descriptors)
     }
 
@@ -174,9 +178,9 @@ export const MasonryGrid = defineComponent({
     function createEngine() {
       if (!container.value) return
       visibleIds.value = props.options.virtualize ? new Set() : null
-      previousIds = new Set(props.items.map((item) => item.id))
+      previousIds = new Set(props.items.map((item) => getItemId(item)))
       itemCache.clear()
-      for (const item of props.items) itemCache.set(item.id, item)
+      for (const item of props.items) itemCache.set(getItemId(item), item)
       engine = createMasonryEngine(container.value, {
         ...masonryDefaults,
         ...props.options,
@@ -202,14 +206,14 @@ export const MasonryGrid = defineComponent({
     }
 
     function labelFor(id: string, items: MasonryGridItem[]): string {
-      const position = items.findIndex((candidate) => candidate.id === id) + 1
+      const position = items.findIndex((candidate) => getItemId(candidate) === id) + 1
       return `item ${position} of ${items.length}`
     }
 
     let keyboardDragSnapshot: MasonryGridItem[] | null = null
 
     function moveItem(items: MasonryGridItem[], id: string, toIndex: number): MasonryGridItem[] {
-      const fromIndex = items.findIndex((item) => item.id === id)
+      const fromIndex = items.findIndex((item) => getItemId(item) === id)
       if (fromIndex === -1) return items
       const next = [...items]
       const [moved] = next.splice(fromIndex, 1)
@@ -219,26 +223,25 @@ export const MasonryGrid = defineComponent({
 
     function onItemKeydown(event: KeyboardEvent, item: MasonryGridItem) {
       if (!props.sortable || !engine) return
+      const id = getItemId(item)
 
       if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault()
-        if (activeDragId.value === item.id) {
+        if (activeDragId.value === id) {
           activeDragId.value = null
           keyboardDragSnapshot = null
           engine.setDragging(null)
-          announce(`Dropped ${labelFor(item.id, props.items)}.`)
+          announce(`Dropped ${labelFor(id, props.items)}.`)
         } else if (activeDragId.value === null) {
-          activeDragId.value = item.id
+          activeDragId.value = id
           keyboardDragSnapshot = props.items
-          engine.setDragging(item.id)
-          announce(
-            `Picked up ${labelFor(item.id, props.items)}. Use arrow keys to move, space to drop, escape to cancel.`,
-          )
+          engine.setDragging(id)
+          announce(`Picked up ${labelFor(id, props.items)}. Use arrow keys to move, space to drop, escape to cancel.`)
         }
         return
       }
 
-      if (activeDragId.value !== item.id) return
+      if (activeDragId.value !== id) return
 
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -256,14 +259,14 @@ export const MasonryGrid = defineComponent({
       if (event.key !== forwardKey && event.key !== backwardKey) return
       event.preventDefault()
 
-      const currentIndex = props.items.findIndex((candidate) => candidate.id === item.id)
+      const currentIndex = props.items.findIndex((candidate) => getItemId(candidate) === id)
       const step = event.key === forwardKey ? 1 : -1
       const nextIndex = currentIndex + step
       if (nextIndex < 0 || nextIndex >= props.items.length) return
 
-      const reordered = moveItem(props.items, item.id, nextIndex)
+      const reordered = moveItem(props.items, id, nextIndex)
       emit('reorder', reordered)
-      announce(`Moved to ${labelFor(item.id, reordered)}.`)
+      announce(`Moved to ${labelFor(id, reordered)}.`)
     }
 
     onMounted(() => {
@@ -306,27 +309,28 @@ export const MasonryGrid = defineComponent({
         },
         [
           ...renderedItems.value.map((item) => {
-            const isLeaving = leaving.value.has(item.id)
+            const id = getItemId(item)
+            const isLeaving = leaving.value.has(id)
             const sortableAttrs = props.sortable
               ? {
                   tabindex: 0,
                   role: 'button',
                   'aria-roledescription': 'Reorderable item',
                   'aria-describedby': instructionsId,
-                  'aria-pressed': activeDragId.value === item.id ? 'true' : 'false',
+                  'aria-pressed': activeDragId.value === id ? 'true' : 'false',
                   onKeydown: (event: KeyboardEvent) => onItemKeydown(event, item),
                 }
               : {}
             return h(
               'div',
               {
-                key: item.id,
+                key: id,
                 class: 'mk-item',
                 style: {
                   ...(hasLaidOut.value ? {} : { breakInside: 'avoid', marginBottom: `${resolvedGap().main}px` }),
                   ...(isLeaving ? { pointerEvents: 'none' } : {}),
                 },
-                ref: getItemRefCallback(item.id),
+                ref: getItemRefCallback(id),
                 ...sortableAttrs,
               },
               slots.item?.({ item }),

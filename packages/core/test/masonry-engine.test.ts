@@ -117,6 +117,62 @@ describe('createMasonryEngine — vertical', () => {
   })
 })
 
+describe('createMasonryEngine — unloaded images', () => {
+  let container: HTMLElement
+  let engine: MasonryEngine | undefined
+
+  beforeEach(() => {
+    container = makeEl(500, 0)
+    document.body.appendChild(container)
+  })
+
+  function makeImgWrapper(): { wrapper: HTMLElement; img: HTMLImageElement } {
+    const wrapper = document.createElement('div')
+    const img = document.createElement('img')
+    img.src = 'photo.jpg'
+    wrapper.appendChild(img)
+    return { wrapper, img }
+  }
+
+  it('excludes an item whose image has not loaded and has no aspectRatio hint', () => {
+    const { wrapper } = makeImgWrapper()
+    container.append(wrapper)
+
+    engine = createMasonryEngine(container, { columns: 1, gap: 0, minLaneSize: 200 })
+    engine.setItems([{ id: 'a', el: wrapper }])
+
+    expect(engine.getLayout()).toEqual([])
+  })
+
+  it('still uses aspectRatio while the image is loading', () => {
+    const { wrapper } = makeImgWrapper()
+    container.append(wrapper)
+
+    engine = createMasonryEngine(container, { columns: 1, gap: 0, minLaneSize: 200 })
+    engine.setItems([{ id: 'a', el: wrapper, aspectRatio: 2 }])
+
+    const layout = engine.getLayout()
+    expect(layout).toHaveLength(1)
+    expect(layout[0].height).toBeCloseTo(250)
+  })
+
+  it('relayouts once the image fires load, picking up the real measurement', () => {
+    const { wrapper, img } = makeImgWrapper()
+    container.append(wrapper)
+
+    engine = createMasonryEngine(container, { columns: 1, gap: 0, minLaneSize: 200 })
+    engine.setItems([{ id: 'a', el: wrapper }])
+    expect(engine.getLayout()).toEqual([])
+
+    Object.defineProperty(img, 'complete', { value: true, configurable: true })
+    stubRect(wrapper, 0, 120)
+    img.dispatchEvent(new Event('load'))
+
+    const layout = engine.getLayout()
+    expect(layout).toEqual([{ id: 'a', x: 0, y: 0, width: 500, height: 120 }])
+  })
+})
+
 describe('createMasonryEngine — horizontal', () => {
   it('packs along x and resolves lanes from the container height', () => {
     const container = makeEl(0, 300) // cross-axis (height) = 300

@@ -19,9 +19,10 @@ import {
   type MasonryItemLayout,
   type MasonryOptions,
 } from '@macrulez/masonry-kit-core'
+import { getItemId } from './itemId'
 
 export interface MasonryGridItem {
-  id: string
+  id?: string
   colSpan?: number
   rowSpan?: number
   aspectRatio?: number
@@ -84,7 +85,7 @@ function resolvedSsrColumns(options: MasonryOptions): number {
 }
 
 function moveItem(items: MasonryGridItem[], id: string, toIndex: number): MasonryGridItem[] {
-  const fromIndex = items.findIndex((item) => item.id === id)
+  const fromIndex = items.findIndex((item) => getItemId(item) === id)
   if (fromIndex === -1) return items
   const next = [...items]
   const [moved] = next.splice(fromIndex, 1)
@@ -93,7 +94,7 @@ function moveItem(items: MasonryGridItem[], id: string, toIndex: number): Masonr
 }
 
 function labelFor(id: string, items: MasonryGridItem[]): string {
-  const position = items.findIndex((candidate) => candidate.id === id) + 1
+  const position = items.findIndex((candidate) => getItemId(candidate) === id) + 1
   return `item ${position} of ${items.length}`
 }
 
@@ -127,33 +128,36 @@ export function MasonryGrid(props: MasonryGridProps) {
   onLayoutRef.current = onLayout
 
   const renderedItems = useMemo(() => {
-    const base = visibleIds === null ? items : items.filter((item) => visibleIds.has(item.id))
+    const base = visibleIds === null ? items : items.filter((item) => visibleIds.has(getItemId(item)))
     if (leaving.size === 0) return base
-    const baseIds = new Set(base.map((item) => item.id))
-    const ghosts = [...leaving.values()].filter((item) => !baseIds.has(item.id))
+    const baseIds = new Set(base.map((item) => getItemId(item)))
+    const ghosts = [...leaving.values()].filter((item) => !baseIds.has(getItemId(item)))
     return ghosts.length === 0 ? base : [...base, ...ghosts]
   }, [items, visibleIds, leaving])
 
   function syncItemsNow() {
     const engine = engineRef.current
     if (!engine) return
-    const descriptors: MasonryItemDescriptor[] = itemsRef.current.map((item) => ({
-      id: item.id,
-      el: itemEls.current.get(item.id),
-      colSpan: item.colSpan,
-      rowSpan: item.rowSpan,
-      aspectRatio: item.aspectRatio,
-      estimatedSize: item.estimatedSize,
-      order: item.order,
-    }))
+    const descriptors: MasonryItemDescriptor[] = itemsRef.current.map((item) => {
+      const id = getItemId(item)
+      return {
+        id,
+        el: itemEls.current.get(id),
+        colSpan: item.colSpan,
+        rowSpan: item.rowSpan,
+        aspectRatio: item.aspectRatio,
+        estimatedSize: item.estimatedSize,
+        order: item.order,
+      }
+    })
     engine.setItems(descriptors)
   }
 
   const lastDiffedItems = useRef<MasonryGridItem[] | null>(null)
   if (lastDiffedItems.current !== items) {
     lastDiffedItems.current = items
-    const nextIds = new Set(items.map((item) => item.id))
-    for (const item of items) itemCache.current.set(item.id, item)
+    const nextIds = new Set(items.map((item) => getItemId(item)))
+    for (const item of items) itemCache.current.set(getItemId(item), item)
 
     let additions: Map<string, MasonryGridItem> | null = null
     for (const id of previousIds.current) {
@@ -195,9 +199,9 @@ export function MasonryGrid(props: MasonryGridProps) {
       if (options.virtualize) return prev && prev.size === 0 ? prev : new Set()
       return prev === null ? prev : null
     })
-    previousIds.current = new Set(itemsRef.current.map((item) => item.id))
+    previousIds.current = new Set(itemsRef.current.map((item) => getItemId(item)))
     itemCache.current.clear()
-    for (const item of itemsRef.current) itemCache.current.set(item.id, item)
+    for (const item of itemsRef.current) itemCache.current.set(getItemId(item), item)
 
     const engine = createMasonryEngine(containerNode, options)
     engineRef.current = engine
@@ -231,24 +235,25 @@ export function MasonryGrid(props: MasonryGridProps) {
 
   function onItemKeydown(event: ReactKeyboardEvent, item: MasonryGridItem) {
     if (!sortable || !engineRef.current) return
+    const id = getItemId(item)
 
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault()
-      if (activeDragId === item.id) {
+      if (activeDragId === id) {
         setActiveDragId(null)
         keyboardDragSnapshotRef.current = null
         engineRef.current.setDragging(null)
-        announce(`Dropped ${labelFor(item.id, items)}.`)
+        announce(`Dropped ${labelFor(id, items)}.`)
       } else if (activeDragId === null) {
-        setActiveDragId(item.id)
+        setActiveDragId(id)
         keyboardDragSnapshotRef.current = items
-        engineRef.current.setDragging(item.id)
-        announce(`Picked up ${labelFor(item.id, items)}. Use arrow keys to move, space to drop, escape to cancel.`)
+        engineRef.current.setDragging(id)
+        announce(`Picked up ${labelFor(id, items)}. Use arrow keys to move, space to drop, escape to cancel.`)
       }
       return
     }
 
-    if (activeDragId !== item.id) return
+    if (activeDragId !== id) return
 
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -266,40 +271,41 @@ export function MasonryGrid(props: MasonryGridProps) {
     if (event.key !== forwardKey && event.key !== backwardKey) return
     event.preventDefault()
 
-    const currentIndex = items.findIndex((candidate) => candidate.id === item.id)
+    const currentIndex = items.findIndex((candidate) => getItemId(candidate) === id)
     const step = event.key === forwardKey ? 1 : -1
     const nextIndex = currentIndex + step
     if (nextIndex < 0 || nextIndex >= items.length) return
 
-    const reordered = moveItem(items, item.id, nextIndex)
+    const reordered = moveItem(items, id, nextIndex)
     onReorderRef.current?.(reordered)
-    announce(`Moved to ${labelFor(item.id, reordered)}.`)
+    announce(`Moved to ${labelFor(id, reordered)}.`)
   }
 
   const itemChildren = renderedItems.map((item) => {
-    const isLeaving = leaving.has(item.id)
+    const id = getItemId(item)
+    const isLeaving = leaving.has(id)
     const sortableAttrs = sortable
       ? {
           tabIndex: 0,
           role: 'button',
           'aria-roledescription': 'Reorderable item',
           'aria-describedby': instructionsId,
-          'aria-pressed': activeDragId === item.id ? 'true' : 'false',
+          'aria-pressed': activeDragId === id ? 'true' : 'false',
           onKeyDown: (event: ReactKeyboardEvent) => onItemKeydown(event, item),
         }
       : {}
     return createElement(
       'div',
       {
-        key: item.id,
+        key: id,
         className: 'mk-item',
         style: {
           ...(hasLaidOut ? {} : { breakInside: 'avoid', marginBottom: `${resolvedGap(options).main}px` }),
           ...(isLeaving ? { pointerEvents: 'none' } : {}),
         },
         ref: (el: HTMLElement | null) => {
-          if (el) itemEls.current.set(item.id, el)
-          else itemEls.current.delete(item.id)
+          if (el) itemEls.current.set(id, el)
+          else itemEls.current.delete(id)
         },
         ...sortableAttrs,
       },
